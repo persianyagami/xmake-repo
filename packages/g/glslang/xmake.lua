@@ -11,6 +11,7 @@ package("glslang")
     add_deps("spirv-tools", "python 3.x")
 
     on_install("linux", "windows", "macosx", function (package)
+        package:addenv("PATH", "bin")
         io.gsub("CMakeLists.txt", "ENABLE_OPT OFF", "ENABLE_OPT ON")
         local configs = {"-DENABLE_CTEST=OFF"}
         table.insert(configs, "-DCMAKE_BUILD_TYPE=" .. (package:debug() and "Debug" or "Release"))
