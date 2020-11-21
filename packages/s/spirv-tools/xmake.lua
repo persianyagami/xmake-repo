@@ -10,7 +10,8 @@ package("spirv-tools")
     add_patches("2020.5", "https://github.com/KhronosGroup/SPIRV-Tools/commit/a1d38174b1f7d2651c718ae661886d606cb50a32.patch", "2811faeef3ad53a83e409c8ef9879badcf9dc04fc3d98dbead7313514b819933")
 
     add_deps("cmake")
-    add_deps("spirv-headers", "python 3.x")
+    add_deps("spirv-headers")
+    add_deps("python 3.x", {kind = "binary"})
 
     on_install("linux", "windows", "macosx", function (package)
         package:addenv("PATH", "bin")
@@ -20,9 +21,16 @@ package("spirv-tools")
         local spirv = package:dep("spirv-headers")
         table.insert(configs, "-DSPIRV-Headers_SOURCE_DIR=" .. spirv:installdir():gsub("\\", "/"))
         import("package.tools.cmake").install(package, configs)
+        if package:config("shared") then
+            package:add("links", "SPIRV-Tools-shared")
+        else
+            package:add("links", "SPIRV-Tools")
+        end
+        package:add("links", "SPIRV-Tools-link", "SPIRV-Tools-reduce", "SPIRV-Tools-opt")
     end)
 
     on_test(function (package)
         os.runv("spirv-as --help")
         os.runv("spirv-opt --help")
+        assert(package:has_cxxfuncs("spvContextCreate", {includes = "spirv-tools/libspirv.hpp"}))
     end)
