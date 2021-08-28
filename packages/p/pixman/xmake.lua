@@ -5,6 +5,7 @@ package("pixman")
 
     set_urls("https://cairographics.org/releases/pixman-$(version).tar.gz")
     add_versions("0.38.0", "a7592bef0156d7c27545487a52245669b00cf7e70054505381cff2136d890ca8")
+    add_versions("0.40.0", "6d200dec3740d9ec4ec8d1180e25779c00bc749f94278c8b9021f5534db223fc")
 
     if is_plat("windows") then
         add_deps("make")
@@ -14,8 +15,10 @@ package("pixman")
     add_includedirs("include/pixman-1")
 
     on_install("windows", function (package)
+        import("core.tool.toolchain")
+        local runenvs = toolchain.load("msvc"):runenvs()
         io.gsub("Makefile.win32.common", "%-MD", "-" .. package:config("vs_runtime"))
-        os.vrun("make -f Makefile.win32 pixman MMX=off")
+        os.vrunv("make", {"-f", "Makefile.win32", "pixman", "MMX=off"}, {envs = runenvs})
         os.cp("pixman/*.h", package:installdir("include/pixman-1"))
         os.cp("pixman/release/*.lib", package:installdir("lib"))
     end)

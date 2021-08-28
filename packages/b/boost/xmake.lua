@@ -3,23 +3,24 @@ package("boost")
     set_homepage("https://www.boost.org/")
     set_description("Collection of portable C++ source libraries.")
 
-    add_urls("https://dl.bintray.com/boostorg/release/$(version).tar.bz2", {version = function (version)
+    add_urls("https://boostorg.jfrog.io/artifactory/main/release/$(version).tar.bz2", {version = function (version)
             return version .. "/source/boost_" .. (version:gsub("%.", "_"))
         end})
     add_urls("https://github.com/xmake-mirror/boost/releases/download/boost-$(version).tar.bz2", {version = function (version)
             return version .. "/boost_" .. (version:gsub("%.", "_"))
         end})
-
+    add_versions("1.76.0", "f0397ba6e982c4450f27bf32a2a83292aba035b827a5623a14636ea583318c41")
     add_versions("1.75.0", "953db31e016db7bb207f11432bef7df100516eeb746843fa0486a222e3fd49cb")
     add_versions("1.74.0", "83bfc1507731a0906e387fc28b7ef5417d591429e51e788417fe9ff025e116b1")
     add_versions("1.73.0", "4eb3b8d442b426dc35346235c8733b5ae35ba431690e38c6a8263dce9fcbb402")
     add_versions("1.72.0", "59c9b274bc451cf91a9ba1dd2c7fdcaf5d60b1b3aa83f2c9fa143417cc660722")
     add_versions("1.70.0", "430ae8354789de4fd19ee52f3b1f739e1fba576f0aded0897c3c2bc00fb38778")
 
+    add_patches("1.75.0", path.join(os.scriptdir(), "patches", "1.75.0", "warning.patch"), "43ff97d338c78b5c3596877eed1adc39d59a000cf651d0bcc678cf6cd6d4ae2e")
+
     if is_plat("linux") then
         add_deps("bzip2", "zlib")
-    elseif is_plat("windows") then
-        add_cxflags("/EHsc")
+        add_syslinks("pthread", "dl")
     end
 
     local libnames = {"filesystem",
@@ -39,8 +40,11 @@ package("boost")
                       "wave",
                       "date_time",
                       "locale",
-                      "iostreams"}
+                      "iostreams",
+                      "program_options",
+                      "test"}
 
+    add_configs("all",          { description = "Enable all library modules support.",  default = false, type = "boolean"})
     add_configs("multi",        { description = "Enable multi-thread support.",  default = true, type = "boolean"})
     for _, libname in ipairs(libnames) do
         add_configs(libname,    { description = "Enable " .. libname .. " library.", default = (libname == "filesystem"), type = "boolean"})
@@ -66,6 +70,8 @@ package("boost")
             end
             package:add("links", linkname)
         end
+        -- disable auto-link all libs
+        package:add("defines", "BOOST_ALL_NO_LIB")
     end)
 
     on_install("macosx", "linux", "windows", function (package)
@@ -136,9 +142,12 @@ package("boost")
                 table.insert(argv, "cxxflags=-stdlib=libc++")
                 table.insert(argv, "linkflags=-stdlib=libc++")
             end
+            if package:config("pic") ~= false then
+                table.insert(argv, "cxxflags=-fPIC")
+            end
         end
         for _, libname in ipairs(libnames) do
-            if package:config(libname) then
+            if package:config("all") or package:config(libname) then
                 table.insert(argv, "--with-" .. libname)
             end
         end
@@ -150,16 +159,19 @@ package("boost")
             #include <boost/algorithm/string.hpp>
             #include <string>
             #include <vector>
-            #include <assert.h>
-            using namespace boost::algorithm;
-            using namespace std;
             static void test() {
-                string str("a,b");
-                vector<string> strVec;
-                split(strVec, str, is_any_of(","));
-                assert(strVec.size()==2);
-                assert(strVec[0]=="a");
-                assert(strVec[1]=="b");
+                std::string str("a,b");
+                std::vector<std::string> vec;
+                boost::algorithm::split(vec, str, boost::algorithm::is_any_of(","));
             }
         ]]}, {configs = {languages = "c++14"}}))
+
+        if package:config("date_time") then
+            assert(package:check_cxxsnippets({test = [[
+                #include <boost/date_time/gregorian/gregorian.hpp>
+                static void test() {
+                    boost::gregorian::date d(2010, 1, 30);
+                }
+            ]]}, {configs = {languages = "c++14"}}))
+        end
     end)

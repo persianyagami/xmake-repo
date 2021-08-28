@@ -4,7 +4,7 @@ package("giflib")
     set_description("A library for reading and writing gif images.")
     set_license("MIT")
 
-    add_urls("https://jaist.dl.sourceforge.net/project/giflib/giflib-$(version).tar.gz")
+    add_urls("https://sourceforge.net/projects/giflib/files/giflib-$(version).tar.gz")
     add_versions("5.2.1", "31da5562f44c5f15d63340a09a4fd62b48c45620cd302f77a6d9acf0077879bd")
 
     add_configs("utils", {description = "Build utility binaries.", default = true, type = "boolean"})
@@ -13,7 +13,7 @@ package("giflib")
         add_deps("cgetopt")
     end
 
-    on_install("linux", "macosx", "windows", "mingw", "android", "iphoneos", function (package)
+    on_install("linux", "macosx", "windows", "mingw", "android", "iphoneos", "bsd", function (package)
         local lib_sources = {"dgif_lib.c", "egif_lib.c", "gifalloc.c", "gif_err.c", "gif_font.c", "gif_hash.c", "openbsd-reallocarray.c"}
         local kind = "static"
         if package:config("shared") then
@@ -44,6 +44,10 @@ package("giflib")
         if package:config("utils") then
             local util_table = {"gif2rgb", "gifbuild", "gifclrmp", "giffix", "giftext", "giftool"}
             for _, util in ipairs(util_table) do
+                if package:is_plat("windows") then
+                    -- fix unresolved external symbol snprintf before vs2013
+                    io.replace(util .. ".c", "snprintf", "_snprintf")
+                end
                 xmake_lua = xmake_lua .. string.format([[
                     target("%s")
                         set_kind("binary")
@@ -55,7 +59,11 @@ package("giflib")
             end
         end
         io.writefile("xmake.lua", xmake_lua)
-        import("package.tools.xmake").install(package)
+        local configs = {}
+        if package:is_plat("linux") and package:config("pic") ~= false then
+            configs.cxflags = "-fPIC"
+        end
+        import("package.tools.xmake").install(package, configs)
     end)
 
     on_test(function (package)

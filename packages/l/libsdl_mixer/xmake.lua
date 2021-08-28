@@ -11,6 +11,12 @@ package("libsdl_mixer")
         add_versions("2.0.4", "9affb8c7bf6fbffda0f6906bfb99c0ea50dca9b188ba9e15be90042dc03c5ded")
     end
 
+    if is_plat("linux") then
+        add_extsources("pacman::sdl2_mixer", "apt::libsdl2-mixer-dev")
+    elseif is_plat("macosx") then
+        add_extsources("brew::sdl2_mixer")
+    end
+
     add_deps("libsdl")
 
     add_links("SDL2_mixer")
@@ -22,7 +28,7 @@ package("libsdl_mixer")
         end
         os.cp("include/*", package:installdir("include/SDL2"))
         os.cp(path.join("lib", arch, "*.lib"), package:installdir("lib"))
-        os.cp(path.join("lib", arch, "*.dll"), package:installdir("lib"))
+        os.cp(path.join("lib", arch, "*.dll"), package:installdir("bin"))
     end)
 
     on_install("macosx", "linux", function (package)
@@ -32,7 +38,13 @@ package("libsdl_mixer")
         else
             table.insert(configs, "--enable-shared=no")
         end
-        table.insert(configs, "--with-sdl-prefix=" .. package:dep("libsdl"):installdir())
+        if package:is_plat("linux") and package:config("pic") ~= false then
+            table.insert(configs, "--with-pic")
+        end
+        local libsdl = package:dep("libsdl")
+        if libsdl and not libsdl:is_system() then
+            table.insert(configs, "--with-sdl-prefix=" .. libsdl:installdir())
+        end
         import("package.tools.autoconf").install(package, configs)
     end)
 

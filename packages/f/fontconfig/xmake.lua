@@ -5,8 +5,10 @@ package("fontconfig")
 
     set_urls("https://www.freedesktop.org/software/fontconfig/release/fontconfig-$(version).tar.gz")
     add_versions("2.13.1", "9f0d852b39d75fc655f9f53850eb32555394f36104a044bb2b2fc9e66dbbfa7f")
+    add_versions("2.13.93", "0f302a18ee52dde0793fe38b266bf269dfe6e0c0ae140e30d72c6cca5dc08db5")
 
-    add_deps("pkg-config", "freetype >= 2.9", "expat")
+    add_deps("pkg-config", "freetype >=2.9", "expat")
+    add_deps("python 3.x", {kind = "binary"})
     if is_plat("macosx") then
         add_deps("gettext")
     else
@@ -35,6 +37,9 @@ package("fontconfig")
             envs.UUID_CFLAGS = "-I" .. package:dep("util-linux"):installdir("include")
         end
         table.insert(configs, "--enable-shared=no")
+        if package:config("pic") ~= false then
+            table.insert(configs, "--with-pic")
+        end
         autoconf.install(package, configs, {envs = envs})
     end)
 

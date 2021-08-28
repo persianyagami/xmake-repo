@@ -8,6 +8,10 @@ package("libxkbcommon")
              "https://github.com/xkbcommon.git")
     add_versions("1.0.3", "5d10a57ab65daad7d975926166770eca1d2c899131ab96c23845df1c42da5c31")
 
+    if is_plat("linux") then
+        add_extsources("apt::libxkbcommon-dev")
+    end
+
     add_configs("x11", {description = "Switch backend to X11 (default is wayland).", default = false, type = "boolean"})
     on_load("linux", function (package)
         if package:config("x11") then
@@ -20,15 +24,8 @@ package("libxkbcommon")
     add_deps("meson")
     on_install("linux", function (package)
         package:addenv("PATH", "bin")
-
-        -- add links
-        local arch = package:is_arch("x86_64", "x64") and "x86_64" or "x86"
-        package:add("linkdirs", path.join("lib", arch .. "-linux-gnu"))
-        package:add("links", "xkbregistry", "xkbcommon")
-        os.mv(package:installdir("lib", arch .. "-linux-gnu", "pkgconfig"), package:installdir("lib"))
-
-        -- build
         local configs = {"-Denable-docs=false", "-Dc_link_args=-lm"}
+        table.insert(configs, "--libdir=lib")
         if package:config("x11") then
             table.join2(configs, {"-Denable-wayland=false", "-Dxkb-config-root=/usr/share/X11/xkb", "-Dx-locale-root=/usr/share/X11/locale"})
         else

@@ -11,6 +11,12 @@ package("libsdl_ttf")
         add_versions("2.0.15", "cdb72b5b1c3b27795fa128af36f369fee5d3e38a96c350855da0b81880555dbc")
     end
 
+    if is_plat("linux") then
+        add_extsources("pacman::sdl2_ttf", "apt::libsdl2-ttf-dev")
+    elseif is_plat("macosx") then
+        add_extsources("brew::sdl2_ttf")
+    end
+
     add_deps("libsdl")
     if is_plat("linux", "macosx") then
         add_deps("freetype")
@@ -25,7 +31,7 @@ package("libsdl_ttf")
         end
         os.cp("include/*", package:installdir("include/SDL2"))
         os.cp(path.join("lib", arch, "*.lib"), package:installdir("lib"))
-        os.cp(path.join("lib", arch, "*.dll"), package:installdir("lib"))
+        os.cp(path.join("lib", arch, "*.dll"), package:installdir("bin"))
     end)
 
     on_install("macosx", "linux", function (package)
@@ -35,7 +41,13 @@ package("libsdl_ttf")
         else
             table.insert(configs, "--enable-shared=no")
         end
-        table.insert(configs, "--with-sdl-prefix=" .. package:dep("libsdl"):installdir())
+        if package:is_plat("linux") and package:config("pic") ~= false then
+            table.insert(configs, "--with-pic")
+        end
+        local libsdl = package:dep("libsdl")
+        if libsdl and not libsdl:is_system() then
+            table.insert(configs, "--with-sdl-prefix=" .. libsdl:installdir())
+        end
         import("package.tools.autoconf").install(package, configs)
     end)
 

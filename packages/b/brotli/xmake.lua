@@ -21,6 +21,31 @@ package("brotli")
         package:addenv("PATH", "bin")
     end)
 
+    if on_fetch then
+        on_fetch("linux", "macosx", function (package, opt)
+            if opt.system then
+                local result
+                for _, name in ipairs({"libbrotlidec", "libbrotlienc", "libbrotlicommon"}) do
+                    local pkginfo = package.find_package and package:find_package("pkgconfig::" .. name, opt)
+                    if pkginfo then
+                        if not result then
+                            result = table.copy(pkginfo)
+                        else
+                            local includedirs = pkginfo.sysincludedirs or pkginfo.includedirs
+                            result.links = table.wrap(result.links)
+                            result.linkdirs = table.wrap(result.linkdirs)
+                            result.includedirs = table.wrap(result.includedirs)
+                            table.join2(result.includedirs, includedirs)
+                            table.join2(result.linkdirs, pkginfo.linkdirs)
+                            table.join2(result.links, pkginfo.links)
+                        end
+                    end
+                end
+                return result
+            end
+        end)
+    end
+
     on_install(function (package)
         io.writefile("xmake.lua", [[
             add_rules("mode.debug", "mode.release")
@@ -34,6 +59,9 @@ package("brotli")
                                 "BROTLIENC_SHARED_COMPILATION",
                                 "BROTLIDEC_SHARED_COMPILATION")
                 end
+                if is_plat("linux") then
+                    add_cxflags("-fvisibility=default")
+                end
                 add_headerfiles("c/include/(brotli/*.h)")
             target("brotlibin")
                 set_kind("binary")
@@ -43,6 +71,9 @@ package("brotli")
         local configs = {buildir = "xbuild"}
         if package:config("shared") then
             configs.kind = "shared"
+        end
+        if package:is_plat("linux") and package:config("pic") ~= false then
+            configs.cxflags = "-fPIC"
         end
         import("package.tools.xmake").install(package, configs)
     end)

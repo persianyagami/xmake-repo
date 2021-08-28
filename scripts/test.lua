@@ -13,13 +13,20 @@ local options =
 ,   {'p', "plat",       "kv", nil, "Set the given platform."                    }
 ,   {'a', "arch",       "kv", nil, "Set the given architecture."                }
 ,   {'m', "mode",       "kv", nil, "Set the given mode."                        }
+,   {'j', "jobs",       "kv", nil, "Set the build jobs."                        }
+,   {nil, "linkjobs",   "kv", nil, "Set the link jobs."                         }
 ,   {nil, "cflags",     "kv", nil, "Set the cflags."                            }
 ,   {nil, "cxxflags",   "kv", nil, "Set the cxxflags."                          }
 ,   {nil, "ldflags",    "kv", nil, "Set the ldflags."                           }
-,   {nil, "ndk",        "kv", nil, "Set the android NDK directory."             }
+,   {nil, "ndk",        "kv", nil, "Set the Android NDK directory."             }
+,   {nil, "ndk_sdkver", "kv", nil, "Set the Android NDK platform sdk version."  }
 ,   {nil, "sdk",        "kv", nil, "Set the SDK directory of cross toolchain."  }
+,   {nil, "vs",         "kv", nil, "Set the VS Compiler version."               }
 ,   {nil, "vs_sdkver",  "kv", nil, "Set the Windows SDK version."               }
+,   {nil, "vs_toolset", "kv", nil, "Set the Windows Toolset version."           }
+,   {nil, "vs_runtime", "kv", nil, "Set the VS Runtime library."                }
 ,   {nil, "mingw",      "kv", nil, "Set the MingW directory."                   }
+,   {nil, "toolchain",  "kv", nil, "Set the toolchain name."                    }
 ,   {nil, "packages",   "vs", nil, "The package list."                          }
 }
 
@@ -48,11 +55,26 @@ function _require_packages(argv, packages)
     if argv.sdk then
         table.insert(config_argv, "--sdk=" .. argv.sdk)
     end
+    if argv.ndk_sdkver then
+        table.insert(config_argv, "--ndk_sdkver=" .. argv.ndk_sdkver)
+    end
+    if argv.vs then
+        table.insert(config_argv, "--vs=" .. argv.vs)
+    end
     if argv.vs_sdkver then
         table.insert(config_argv, "--vs_sdkver=" .. argv.vs_sdkver)
     end
+    if argv.vs_toolset then
+        table.insert(config_argv, "--vs_toolset=" .. argv.vs_toolset)
+    end
+    if argv.vs_runtime then
+        table.insert(config_argv, "--vs_runtime=" .. argv.vs_runtime)
+    end
     if argv.mingw then
         table.insert(config_argv, "--mingw=" .. argv.mingw)
+    end
+    if argv.toolchain then
+        table.insert(config_argv, "--toolchain=" .. argv.toolchain)
     end
     if argv.cflags then
         table.insert(config_argv, "--cflags=" .. argv.cflags)
@@ -64,7 +86,7 @@ function _require_packages(argv, packages)
         table.insert(config_argv, "--ldflags=" .. argv.ldflags)
     end
     os.vexecv("xmake", config_argv)
-    local require_argv = {"require", "-f", "-y"}
+    local require_argv = {"require", "-f", "-y", "--build"}
     if argv.verbose then
         table.insert(require_argv, "-v")
     end
@@ -73,6 +95,12 @@ function _require_packages(argv, packages)
     end
     if argv.shallow then
         table.insert(require_argv, "--shallow")
+    end
+    if argv.jobs then
+        table.insert(require_argv, "--jobs=" .. argv.jobs)
+    end
+    if argv.linkjobs then
+        table.insert(require_argv, "--linkjobs=" .. argv.linkjobs)
     end
     if argv.mode == "debug" and argv.kind == "shared" then
         table.insert(require_argv, "--extra={debug=true,configs={shared=true}}")
@@ -93,7 +121,13 @@ function _package_is_supported(argv, packagename)
         local packages_plat = packages[plat]
         for _, package in ipairs(packages_plat) do
             if package and packagename:split("%s+")[1] == package.name then
-                local arch = argv.arch or platform.archs(plat)[1] or os.arch()
+                local arch = argv.arch
+                if not arch and plat ~= os.subhost() then
+                    arch = platform.archs(plat)[1]
+                end
+                if not arch then
+                    arch = os.subarch()
+                end
                 for _, package_arch in ipairs(package.archs) do
                     if arch == package_arch then
                         return true
@@ -116,6 +150,7 @@ function main(...)
         local files = os.iorun("git diff --name-only HEAD^")
         for _, file in ipairs(files:split('\n'), string.trim) do
             if file:find("packages", 1, true) and path.filename(file) == "xmake.lua" then
+                assert(file == file:lower(), "%s must be lower case!", file)
                 local package = path.filename(path.directory(file))
                 table.insert(packages, package)
             end
@@ -127,6 +162,7 @@ function main(...)
 
     -- remove unsupported packages
     for idx, package in irpairs(packages) do
+        assert(package == package:lower(), "package(%s) must be lower case!", package)
         if not _package_is_supported(argv, package) then
             table.remove(packages, idx)
         end
@@ -151,7 +187,8 @@ function main(...)
     os.exec("xmake repo -l")
 
     -- require packages
-    for _, package in ipairs(packages) do
+    _require_packages(argv, packages)
+    --[[for _, package in ipairs(packages) do
         _require_packages(argv, package)
-    end
+    end]]
 end
