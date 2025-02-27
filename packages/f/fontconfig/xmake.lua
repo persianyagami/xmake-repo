@@ -5,37 +5,45 @@ package("fontconfig")
 
     set_urls("https://www.freedesktop.org/software/fontconfig/release/fontconfig-$(version).tar.gz")
     add_versions("2.13.1", "9f0d852b39d75fc655f9f53850eb32555394f36104a044bb2b2fc9e66dbbfa7f")
-
-    add_deps("pkg-config", "freetype >= 2.9", "expat")
-    if is_plat("macosx") then
-        add_deps("gettext")
-    else
-        add_deps("autoconf", "automake", "libtool", "gperf", "bzip2")
-        add_deps("util-linux", {configs = {libuuid = true}})
-    end
+    add_versions("2.13.93", "0f302a18ee52dde0793fe38b266bf269dfe6e0c0ae140e30d72c6cca5dc08db5")
+    add_versions("2.13.94", "246d1640a7e54fba697b28e4445f4d9eb63dda1b511d19986249368ee7191882")
+    add_versions("2.14.0", "b8f607d556e8257da2f3616b4d704be30fd73bd71e367355ca78963f9a7f0434")
+    add_versions("2.14.2", "3ba2dd92158718acec5caaf1a716043b5aa055c27b081d914af3ccb40dce8a55")
 
     -- fix the build issue with --enable-static
     add_patches("2.13.1", "https://gitlab.freedesktop.org/fontconfig/fontconfig/commit/8208f99fa1676c42bfd8d74de3e9dac5366c150c.diff",
                           "2abdff214b99f2d074170e6512b0149cc858ea26cd930690aa6b4ccea2c549ef")
 
-    on_install("linux", "macosx", function (package)
-        import("package.tools.autoconf")
-        local font_dirs = {}
-        if is_plat("macosx") then
-            table.insert(font_dirs, "/System/Library/Fonts")
-            table.insert(font_dirs, "/Library/Fonts")
-            table.insert(font_dirs, "~/Library/Fonts")
+    add_configs("nls", {description = "Enable Native Language Support (NLS)", default = false, type = "boolean"})
+
+    add_deps("meson", "ninja", "freetype", "expat", "gperf")
+    add_deps("python 3.x", {kind = "binary"})
+    if is_plat("linux") then
+        add_deps("pkg-config")
+    end
+
+    on_load("windows", "linux", "macosx", function (package)
+        if package:config("nls") and not package:is_plat("linux") then
+            package:add("deps", "libintl")
         end
-        local configs = {"--disable-dependency-tracking", "--disable-silent-rules", "--enable-static", "--disable-docs"}
-        if #font_dirs > 0 then
-            table.insert(configs, "--with-add-fonts=" .. table.concat(font_dirs, ','))
+        if package:is_plat("linux") and package:version():lt("2.13.91") then
+            package:add("deps", "util-linux", {configs = {libuuid = true}})
+            package:add("deps", "autoconf", "automake", "libtool", "bzip2")
         end
-        local envs = autoconf.buildenvs(package)
-        if package:is_plat("linux") then
-            envs.UUID_CFLAGS = "-I" .. package:dep("util-linux"):installdir("include")
+    end)
+
+    on_install("windows", "linux", "macosx", function (package)
+        if package:is_plat("windows") then
+            io.replace("meson.build", "c_args = []", "c_args = ['-DXML_STATIC']", {plain = true})
         end
-        table.insert(configs, "--enable-shared=no")
-        autoconf.install(package, configs, {envs = envs})
+        local configs = {
+            "-Dtests=disabled",
+            "-Dtools=disabled",
+            "-Ddoc=disabled"}
+        table.insert(configs, "-Ddebug=" .. (package:debug() and "true" or "false"))
+        table.insert(configs, "-Ddefault_library=" .. (package:config("shared") and "shared" or "static"))
+        table.insert(configs, "-Dnls=" .. (package:config("nls") and "enabled" or "disabled"))
+        import("package.tools.meson").install(package, configs)
     end)
 
     on_test(function (package)

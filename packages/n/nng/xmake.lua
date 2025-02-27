@@ -4,6 +4,10 @@ package("nng")
     set_description("NNG, like its predecessors nanomsg (and to some extent ZeroMQ), is a lightweight, broker-less library, offering a simple API to solve common recurring messaging problems.")
 
     add_urls("https://github.com/nanomsg/nng/archive/v$(version).zip")
+    add_versions("1.8.0", "48effcfd1acf31f6afcb1a92ecb4aa87f7993f5c54bf6587b0f4fb2606ce96d3")
+    add_versions("1.7.3", "72b39c63ba6467f6ee70c218c291240ff5b189569c3b84e8e0647f5d4d3888ea")
+    add_versions("1.5.2", "652ff3a2dbaeae194942205c369e9259e2b5cb5985d679d744cbfb95d1c807a3")
+    add_versions("1.4.0", "43674bb15d0f3810cf3602d2662cc91b6576b914492710244125e32b29f546b8")
     add_versions("1.3.2", "2616110016c89ed3cbd458022ba41f4f545ab17f807546d2fdd0789b55d64471")
 
     -- default is false
@@ -34,16 +38,21 @@ package("nng")
 
     if is_plat("linux") then
         add_syslinks("pthread")
+    elseif is_plat("windows") then 
+        add_syslinks("ws2_32", "advapi32")
     end
 
     on_load(function (package)
         if not package:config("shared") then
             package:add("defines", "NNG_STATIC_LIB")
         end
+        if package:config("NNG_ENABLE_TLS") then
+            package:add("deps", "mbedtls")
+        end
     end)
 
     add_deps("cmake")
-    on_install("windows", "linux", "macosx", "android", "iphoneos", function(package)
+    on_install("windows", "linux", "macosx", "android", "iphoneos", "cross", function(package)
         local configs = {"-DNNG_TESTS=OFF", "-DNNG_ENABLE_NNGCAT=OFF"}
         table.insert(configs, "-DBUILD_SHARED_LIBS=" .. (package:config("shared") and "ON" or "OFF"))
         for name, enabled in pairs(package:configs()) do

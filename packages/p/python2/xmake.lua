@@ -24,15 +24,16 @@ package("python2")
         add_versions("2.7.18", "da3080e3b488f648a3d7a4560ddee895284c3380b11d6de75edb986526b9a814")
     end
 
-    if not is_plat(os.host()) then
+    if not is_plat(os.host()) or not is_arch(os.arch()) then
         set_kind("binary")
     end
 
-    if is_host("macosx", "linux") then
-        add_deps("openssl", {host = true})
+    if is_host("macosx", "linux", "bsd") then
+        add_deps("openssl", "ca-certificates", {host = true})
     end
 
-    if is_host("linux") then
+    if is_host("linux", "bsd") then
+        add_deps("libffi", "zlib", {host = true})
         add_syslinks("util", "pthread", "dl")
     end
 
@@ -47,7 +48,7 @@ package("python2")
         package:addenv("PATH", "bin")
     end)
 
-    on_load("@macosx", "@linux", function (package)
+    on_load("@macosx", "@linux", "@bsd", function (package)
 
         -- set includedirs
         local version = package:version()
@@ -71,19 +72,44 @@ package("python2")
         os.vrunv(python, {"-m", "pip", "install", "wheel"})
     end)
 
-    on_install("@macosx", "@linux", function (package)
+    on_install("@macosx|x86_64", "@linux", "@bsd", function (package)
 
         -- init configs
-        local configs = {"--enable-ipv6", "--with-ensurepip"}
+        local configs = {"--enable-ipv6", "--with-ensurepip", "--enable-optimizations"}
+        table.insert(configs, "--libdir=" .. package:installdir("lib"))
         table.insert(configs, "--datadir=" .. package:installdir("share"))
         table.insert(configs, "--datarootdir=" .. package:installdir("share"))
+        table.insert(configs, "--enable-shared=" .. (package:config("shared") and "yes" or "no"))
+        if package:is_plat("linux") and package:config("pic") ~= false then
+            table.insert(configs, "--with-pic")
+        end
+
+        -- add compiler settings
+        if package:has_tool("cxx", "gcc", "g++") then
+            table.insert(configs, "CXX=g++")
+        elseif package:has_tool("cxx", "clang", "clang++") then
+            table.insert(configs, "CXX=clang++")
+        end
 
         -- add openssl libs path for detecting
-        local openssl_dir = package:dep("openssl"):installdir()
-        io.gsub("setup.py", "/usr/local/ssl", openssl_dir)
+        local openssl_dir
+        local openssl = package:dep("openssl"):fetch()
+        if openssl then
+            for _, linkdir in ipairs(openssl.linkdirs) do
+                if path.filename(linkdir) == "lib" then
+                    openssl_dir = path.directory(linkdir)
+                    if openssl_dir then
+                        break
+                    end
+                end
+            end
+        end
+        if openssl_dir then
+            io.gsub("setup.py", "/usr/local/ssl", openssl_dir)
+        end
 
         -- allow python modules to use ctypes.find_library to find xmake's stuff
-        if is_host("macosx") then
+        if package:is_plat("macosx") then
             io.gsub("Lib/ctypes/macholib/dyld.py", "DEFAULT_LIBRARY_FALLBACK = %[", format("DEFAULT_LIBRARY_FALLBACK = [ '%s/lib',", package:installdir()))
         end
 
@@ -91,16 +117,22 @@ package("python2")
         local cflags = {}
         local ldflags = {}
         if package:is_plat("macosx") then
-            local xcode_dir = get_config("xcode")
-            local xcode_sdkver  = get_config("xcode_sdkver") or get_config("xcode_sdkver_macosx")
-            if not xcode_dir or not xcode_sdkver then
-                -- maybe on cross platform, we need find xcode envs manually
-                local xcode = import("detect.sdks.find_xcode")(nil, {force = true, plat = package:plat(), arch = package:arch()})
-                if xcode then
-                    xcode_dir = xcode.sdkdir
-                    xcode_sdkver = xcode.sdkver
-                end
+
+            -- get xcode information
+            import("core.tool.toolchain")
+            local xcode_dir
+            local xcode_sdkver
+            local target_minver
+            local xcode = toolchain.load("xcode", {plat = package:plat(), arch = package:arch()})
+            if xcode and xcode.config and xcode:check() then
+                xcode_dir = xcode:config("xcode")
+                xcode_sdkver = xcode:config("xcode_sdkver")
+                target_minver = xcode:config("target_minver")
             end
+            xcode_dir = xcode_dir or get_config("xcode")
+            xcode_sdkver = xcode_sdkver or get_config("xcode_sdkver")
+            target_minver = target_minver or get_config("target_minver")
+
             if xcode_dir and xcode_sdkver then
                 -- help Python's build system (setuptools/pip) to build things on SDK-based systems
                 -- the setup.py looks at "-isysroot" to get the sysroot (and not at --sysroot)
@@ -115,13 +147,6 @@ package("python2")
             end
 
             -- avoid linking to libgcc https://mail.python.org/pipermail/python-dev/2012-February/116205.html
-            local target_minver = get_config("target_minver") or get_config("target_minver_macosx")
-            if not target_minver then
-                local macos_ver = macos.version()
-                if macos_ver then
-                    target_minver = macos_ver:major() .. "." .. macos_ver:minor()
-                end
-            end
             if target_minver then
                 table.insert(configs, "MACOSX_DEPLOYMENT_TARGET=" .. target_minver)
             end
@@ -133,14 +158,42 @@ package("python2")
             table.insert(configs, "LDFLAGS=" .. table.concat(ldflags, " "))
         end
 
+        -- add zlib to fix `No module named 'zlib'`
+        local linkdirs = {}
+        local includedirs = {}
+        if package:is_plat("linux") then
+            local zlib = package:dep("zlib"):fetch({external = false})
+            if zlib then
+                table.join2(linkdirs, zlib.linkdirs)
+                table.join2(includedirs, zlib.includedirs)
+            end
+            -- add libffi to fix `No module named '_ctypes'`
+            local libffi = package:dep("libffi"):fetch({external = false})
+            if libffi then
+                table.join2(linkdirs, libffi.linkdirs)
+                table.join2(includedirs, libffi.includedirs)
+            end
+        end
+        if #linkdirs > 0 and #includedirs > 0 then
+            io.replace("setup.py", "    def detect_modules(self):", format([[    def detect_modules(self):
+        linkdirs = ['%s']
+        includedirs = ['%s']
+        for includedir in includedirs:
+            add_dir_to_list(self.compiler.include_dirs, includedir)
+        for linkdir in linkdirs:
+            add_dir_to_list(self.compiler.library_dirs, linkdir)
+]], table.concat(linkdirs, "', '"), table.concat(includedirs, "', '")), {plain = true})
+        end
+
         -- unset these so that installing pip and setuptools puts them where we want
         -- and not into some other Python the user has installed.
-        import("package.tools.autoconf").configure(package, configs, {envs = {PYTHONHOME = "", PYTHONPATH = ""}})
+        import("package.tools.autoconf").configure(package, configs, {envs = {PYTHONHOME = "", PYTHONPATH = "", LD_LIBRARY_PATH = package:installdir("lib")}})
+        os.vrunv("make", {"-j4", "PYTHONAPPSDIR=" .. package:installdir()})
         os.vrunv("make", {"install", "-j4", "PYTHONAPPSDIR=" .. package:installdir()})
 
         -- install wheel
         local python = path.join(package:installdir("bin"), "python")
-        os.vrunv(python, {"-m", "pip", "install", "wheel"})
+        os.vrunv(python, {"-m", "pip", "install", "wheel"}, {envs = {LD_LIBRARY_PATH = package:installdir("lib")}})
     end)
 
     on_test(function (package)

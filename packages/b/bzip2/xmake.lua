@@ -1,34 +1,35 @@
 package("bzip2")
+    set_homepage("https://sourceware.org/bzip2/")
+    set_description("Freely available, patent free, high-quality data compressor.")
 
-    set_homepage("https://en.wikipedia.org/wiki/Bzip2")
-    set_description("Freely available high-quality data compressor.")
+    add_urls("https://sourceware.org/pub/bzip2/bzip2-$(version).tar.gz")
+    add_versions("1.0.8", "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269")
 
-    set_urls("https://ftp.osuosl.org/pub/clfs/conglomeration/bzip2/bzip2-$(version).tar.gz",
-             "https://fossies.org/linux/misc/bzip2-$(version).tar.gz")
-    add_versions("1.0.6", "a2848f34fcd5d6cf47def00461fcb528a0484d8edef8208d6d2e2909dc61d9cd")
+    if is_plat("mingw") and is_subhost("msys") then
+        add_extsources("pacman::bzip2")
+    elseif is_plat("linux") then
+        add_extsources("pacman::bzip2", "apt::libbz2-dev")
+    elseif is_plat("macosx") then
+        add_extsources("brew::bzip2")
+    end
 
-    on_load("windows", function (package)
-        package:addenv("PATH", "bin")
-        package:add("links", "libbz2")
-    end)
-
-    on_install("windows", function (package)
-        io.gsub("makefile.msc", "%-MD", "-" .. package:config("vs_runtime"))
-        import("package.tools.nmake").build(package, {"-f", "makefile.msc", "bzip2"})
-        os.cp("libbz2.lib", package:installdir("lib"))
-        os.cp("*.h", package:installdir("include"))
-        os.cp("*.exe", package:installdir("bin"))
-    end)
-
-    on_install("macosx", "linux", function (package)
-        local configs = {"PREFIX=" .. package:installdir()}
-        if package:config("shared") then
-            table.insert(configs, "CFLAGS=-fPIC")
+    on_install(function (package)
+        local configs = {}
+        configs.enable_tools = not package:is_plat("wasm")
+        if not package:is_plat("iphoneos", "android") then
+            package:addenv("PATH", "bin")
         end
-        import("package.tools.make").install(package, configs)
+
+        os.cp(path.join(package:scriptdir(), "port", "xmake.lua"), "xmake.lua")
+        import("package.tools.xmake").install(package, configs)
     end)
 
     on_test(function (package)
-        os.vrun("bzip2 --help")
+        if not package:is_cross() then
+            os.vrun("bunzip2 --help")
+            os.vrun("bzcat --help")
+            os.vrun("bzip2 --help")
+        end
+
         assert(package:has_cfuncs("BZ2_bzCompressInit", {includes = "bzlib.h"}))
     end)
