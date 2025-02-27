@@ -5,12 +5,13 @@ package("hpsocket")
 
     add_urls("https://github.com/ldcsaa/HP-Socket/archive/$(version).tar.gz",
              "https://github.com/ldcsaa/HP-Socket.git")
-
-    add_versions("v5.7.3", "b3f77120f94b0e85cabce3c184b8163c62aec42562c3b44beff61fd4d3aa4784")
+    add_versions("v5.7.3", "e653f3c15ded3a4b622ab9a4a52a477c7aa40f5b86398c6b75f5a732a55496a0")
+    add_versions("v5.8.4", "6fd207b84e41174c06d27c0df7244584eb07fbac0a7e49d7429103071184a451")
+    add_versions("v5.9.1", "d40a3d0b4f0d2773ae61d32ed95df655aa6ccf5ae22c40ef38bfc88882b2478b")
 
     local configs = {{name = "udp",    package = "kcp"},
                      {name = "http",   package = "http_parser"},
-                     {name = "zlib",   package = is_plat("android") and "" or "zlib"},
+                     {name = "zlib",   package = is_plat("android", "windows") and "" or "zlib"},
                      {name = "brotli", package = "brotli"},
                      {name = "ssl",    package = ""},
                      {name = "iconv",  package = ""}}
@@ -54,33 +55,25 @@ package("hpsocket")
         package:add("links", package:config("no_4c") and "hpsocket" or "hpsocket4c")
         if not package:config("shared") then
             if not package:config("no_ssl") then
-                local prefix = is_plat("windows") and "lib" or ""
+                local prefix = package:is_plat("windows") and "lib" or ""
                 package:add("links", prefix .. "ssl", prefix .. "crypto")
             end
             if not package:config("no_iconv") then
-                if is_plat("android") then
+                if package:is_plat("android") then
                     package:add("links", "iconv", "charset")
                 end
             end
-            if is_plat("linux") then
+            if package:is_plat("linux") then
                 package:add("links", "jemalloc_pic")
             end
         end
     end)
 
-    on_install("windows", "linux", "android", function (package)
-        if package:is_plat("windows") then
-            io.writefile("stdafx.h", [[
-                #pragma once
-                #include "Windows/Common/Src/GeneralHelper.h"
-            ]])
-            io.writefile("stdafx.cpp", [[
-                #include "stdafx.h"
-            ]])
-        end
+    on_install("windows|x64", "windows|x86", "linux", "android", function (package)
         os.cp(path.join(package:scriptdir(), "port", "xmake.lua"), "xmake.lua")
 
         local config = {}
+        config.hpversion = package:version()
         config.no_4c = package:config("no_4c")
         config.unicode = package:config("unicode")
         for _, cfg in ipairs(configs) do

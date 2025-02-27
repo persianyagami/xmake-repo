@@ -15,7 +15,7 @@ package("pthreads4w")
         add_deps("autoconf", "automake")
     end
 
-    on_install("windows", function (package)
+    on_install("windows|x64", "windows|x86", function (package)
         local target = "VC"
         if not package:config("shared") then
             target = target .. "-static"
@@ -28,7 +28,7 @@ package("pthreads4w")
         os.cp("*.h", package:installdir("include/pthread"))
         if package:config("shared") then
             os.cp("*.dll", package:installdir("bin"))
-            package:add("PATH", "bin")
+            package:addenv("PATH", "bin")
         end
         if package:debug() then
             os.cp("*.pdb", package:installdir("lib"))

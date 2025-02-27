@@ -1,45 +1,87 @@
 package("zlib")
-
     set_homepage("http://www.zlib.net")
     set_description("A Massively Spiffy Yet Delicately Unobtrusive Compression Library")
+    set_license("zlib")
 
-    set_urls("http://zlib.net/zlib-$(version).tar.gz",
-             "https://downloads.sourceforge.net/project/libpng/zlib/$(version)/zlib-$(version).tar.gz")
+    add_urls("https://github.com/madler/zlib/archive/refs/tags/$(version).tar.gz",
+             "https://github.com/madler/zlib.git")
 
-    add_versions("1.2.10", "8d7e9f698ce48787b6e1c67e6bff79e487303e66077e25cb9784ac8835978017")
-    add_versions("1.2.11", "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1")
+    add_versions("v1.2.10", "42cd7b2bdaf1c4570e0877e61f2fdc0bce8019492431d054d3d86925e5058dc5")
+    add_versions("v1.2.11", "629380c90a77b964d896ed37163f5c3a34f6e6d897311f1df2a7016355c45eff")
+    add_versions("v1.2.12", "d8688496ea40fb61787500e863cc63c9afcbc524468cedeb478068924eb54932")
+    add_versions("v1.2.13", "1525952a0a567581792613a9723333d7f8cc20b87a81f920fb8bc7e3f2251428")
+    add_versions("v1.3", "b5b06d60ce49c8ba700e0ba517fa07de80b5d4628a037f4be8ad16955be7a7c0")
+    add_versions("v1.3.1", "17e88863f3600672ab49182f217281b6fc4d3c762bde361935e436a95214d05c")
 
-    on_install("windows", function (package)
-        io.gsub("win32/Makefile.msc", "%-MD", "-" .. package:config("vs_runtime"))
-        import("package.tools.nmake").build(package, {"-f", "win32\\Makefile.msc", "zlib.lib"})
-        os.cp("zlib.lib", package:installdir("lib"))
-        os.cp("*.h", package:installdir("include"))
+    add_configs("zutil", {description = "Export zutil.h api", default = false, type = "boolean"})
+
+    if is_plat("mingw") and is_subhost("msys") then
+        add_extsources("pacman::zlib")
+    elseif is_plat("linux") then
+        add_extsources("pacman::zlib", "apt::zlib1g-dev")
+    elseif is_plat("macosx") then
+        add_extsources("brew::zlib")
+    end
+
+    on_fetch(function (package, opt)
+        if xmake.version():lt("2.8.7") then return end -- disable system find if the bug is present
+        if opt.system then
+            if not package:is_plat("windows", "mingw") then
+                return package:find_package("system::z", {includes = "zlib.h"})
+            end
+        end
     end)
 
-    on_install("mingw@msys", function (package)
-        io.gsub("win32/Makefile.gcc", "\nCC =.-\n",      "\nCC=" .. (package:build_getenv("cc") or "") .. "\n")
-        io.gsub("win32/Makefile.gcc", "\nAR =.-\n",      "\nAR=" .. (package:build_getenv("ar") or "") .. "\n")
-        import("package.tools.make").build(package, {"-f", "win32/Makefile.gcc", "libz.a"})
-        os.cp("libz.a", package:installdir("lib"))
-        os.cp("*.h", package:installdir("include"))
-    end)
+    on_install(function (package)
+        io.writefile("xmake.lua", [[
+            includes("@builtin/check")
+            add_rules("mode.debug", "mode.release")
+            target("zlib")
+                set_kind("$(kind)")
+                if not is_plat("windows") then
+                    set_basename("z")
+                end
+                add_files("adler32.c")
+                add_files("compress.c")
+                add_files("crc32.c")
+                add_files("deflate.c")
+                add_files("gzclose.c")
+                add_files("gzlib.c")
+                add_files("gzread.c")
+                add_files("gzwrite.c")
+                add_files("inflate.c")
+                add_files("infback.c")
+                add_files("inftrees.c")
+                add_files("inffast.c")
+                add_files("trees.c")
+                add_files("uncompr.c")
+                add_files("zutil.c")
+                add_headerfiles("zlib.h", "zconf.h")
+                check_cincludes("Z_HAVE_UNISTD_H", "unistd.h")
+                check_cincludes("HAVE_SYS_TYPES_H", "sys/types.h")
+                check_cincludes("HAVE_STDINT_H", "stdint.h")
+                check_cincludes("HAVE_STDDEF_H", "stddef.h")
+                if is_plat("windows") then
+                    add_defines("_CRT_SECURE_NO_DEPRECATE")
+                    add_defines("_CRT_NONSTDC_NO_DEPRECATE")
+                    if is_kind("shared") then
+                        add_files("win32/zlib1.rc")
+                        add_defines("ZLIB_DLL")
+                    end
+                else
+                    add_defines("ZEXPORT=__attribute__((visibility(\"default\")))")
+                    add_defines("_LARGEFILE64_SOURCE=1")
+                end
+        ]])
+        import("package.tools.xmake").install(package)
 
-    on_install("macosx", function (package)
-        import("package.tools.autoconf").install(package, {"--static"})
-    end)
+        if package:config("shared") and package:is_plat("windows") then
+            package:add("defines", "ZLIB_DLL")
+        end
 
-    on_install("linux", function (package)
-        import("package.tools.autoconf").configure(package, {"--static"})
-        io.gsub("Makefile", "\nCFLAGS=(.-)\n", "\nCFLAGS=%1 -fPIC\n")
-        os.vrun("make install -j4")
-    end)
-
-    on_install("iphoneos", "android@linux,macosx", "mingw@linux,macosx", "cross", function (package)
-        import("package.tools.autoconf").configure(package, {host = "", "--static"})
-        io.gsub("Makefile", "\nAR=.-\n",      "\nAR=" .. (package:build_getenv("ar") or "") .. "\n")
-        io.gsub("Makefile", "\nARFLAGS=.-\n", "\nARFLAGS=cr\n")
-        io.gsub("Makefile", "\nRANLIB=.-\n",  "\nRANLIB=\n")
-        os.vrun("make install -j4")
+        if package:config("zutil") then
+            os.cp("zutil.h", package:installdir("include"))
+        end
     end)
 
     on_test(function (package)

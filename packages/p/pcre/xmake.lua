@@ -1,24 +1,20 @@
 package("pcre")
-
     set_homepage("https://www.pcre.org/")
     set_description("A Perl Compatible Regular Expressions Library")
+    set_license("BSD-3-Clause")
 
-    set_urls("https://ftp.pcre.org/pub/pcre/pcre-$(version).zip",
-             "ftp://ftp.csx.cam.ac.uk/pub/software/programming/pcre/pcre-$(version).zip")
+    set_urls("https://github.com/xmake-mirror/pcre/releases/download/$(version)/pcre-$(version).tar.bz2")
+    add_versions("8.45", "4dae6fdcd2bb0bb6c37b5f97c33c2be954da743985369cddac3546e3218bffb8")
 
-    add_versions("8.40", "99e19194fa57d37c38e897d07ecb3366b18e8c395b36c6d555706a7f1df0a5d4")
-    add_versions("8.41", "0e914a3a5eb3387cad6ffac591c44b24bc384c4e828643643ebac991b57dfcc5")
-
-    if is_host("windows") and not is_plat("mingw") then
+    if is_plat("windows") then
         add_deps("cmake")
     end
+    add_deps("zlib")
 
     add_configs("jit", {description = "Enable jit.", default = true, type = "boolean"})
     add_configs("bitwidth", {description = "Set the code unit width.", default = "8", values = {"8", "16", "32"}})
 
-    on_load(function (package)
-        local bitwidth = package:config("bitwidth") or "8"
-        package:add("links", "pcre" .. (bitwidth ~= "8" and bitwidth or ""))
+    on_load("windows", "mingw", function (package)
         if not package:config("shared") then
             package:add("defines", "PCRE_STATIC")
         end
@@ -26,6 +22,7 @@ package("pcre")
 
     on_install("windows", function (package)
         local configs = {"-DPCRE_BUILD_TESTS=OFF"}
+        table.insert(configs, "-DCMAKE_BUILD_TYPE=" .. (package:is_debug() and "Debug" or "Release"))
         table.insert(configs, "-DBUILD_SHARED_LIBS=" .. (package:config("shared") and "ON" or "OFF"))
         table.insert(configs, "-DPCRE_SUPPORT_JIT=" .. (package:config("jit") and "ON" or "OFF"))
         local bitwidth = package:config("bitwidth") or "8"
@@ -39,13 +36,10 @@ package("pcre")
         import("package.tools.cmake").install(package, configs)
     end)
 
-    on_install("macosx", "linux", "mingw", function (package)
+    on_install("macosx", "linux", "mingw", "cross", function (package)
         local configs = {}
-        if package:config("shared") then
-            table.insert(configs, "--enable-shared=yes")
-        else
-            table.insert(configs, "--enable-shared=no")
-        end
+        table.insert(configs, "--enable-shared=" .. (package:config("shared") and "yes" or "no"))
+        table.insert(configs, "--enable-static=" .. (package:config("shared") and "no" or "yes"))
         if package:config("jit") then
             table.insert(configs, "--enable-jit")
         end

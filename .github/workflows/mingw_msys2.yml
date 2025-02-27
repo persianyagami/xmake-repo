@@ -1,8 +1,9 @@
 name: MingW (Msys2)
 
 on:
-  push:
   pull_request:
+    branches:
+      - dev
 
 jobs:
   build:
@@ -17,21 +18,25 @@ jobs:
             { msystem: MINGW32, kind: shared, arch: i686,   prefix: /mingw32 }
         ]
 
+    concurrency:
+        group: ${{ github.ref }}-${{ github.base_ref }}-${{ github.head_ref }}-MSYS2_MINGW-${{ matrix.msystem }}-${{ matrix.kind }}-${{ matrix.arch }}
+        cancel-in-progress: true
     steps:
 
       - uses: actions/checkout@v1
       - uses: msys2/setup-msys2@v2
         with:
           msystem: ${{ matrix.msystem }}
-          install: git base-devel unzip mingw-w64-${{ matrix.arch }}-toolchain
+          install: git base-devel unzip p7zip mingw-w64-${{ matrix.arch }}-toolchain mingw-w64-${{ matrix.arch }}-gcc-fortran
           update: true
 
       - name: Prepare
         shell: msys2 {0}
         run: |
-          git clone https://github.com/xmake-io/xmake.git --recurse-submodules -b dev
+          git clone https://github.com/xmake-io/xmake.git --recurse-submodules -b master
           cd xmake
-          make build
+          ./configure
+          make -j4
           make install PREFIX=${{ matrix.prefix }}
           xmake --version
           cd ..
